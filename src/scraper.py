@@ -122,7 +122,7 @@ def extract_score_data(listing):
     return score_dict
 
 
-def generate_results(test=False, count=10):
+def generate_results(test=False, count=100):
     kwargs = {}
     if test:
         html = load_inspection_page('inspection_page.html')
@@ -180,9 +180,9 @@ if __name__ == '__main__':
             continue
     with open('my_map.json', 'w') as fh:
         json.dump(total_result, fh)
-    high_score = high_score_restaurant['properties']['High Score']
+    high_score = str(high_score_restaurant['properties']['High Score'])
     high_score_business = high_score_restaurant['properties']['Business Name']
-    p_string = {'The restaurant with the highest '
-                'score is {0}, with a score of {}'}.format(
-                high_score_business, high_score)
-    print(p_string)
+    print('\r\nThe restaurant with the highest score '
+          'is: ' + high_score_business + '\r\n')
+    print('Eww\r\n')
+    print('They have a high score of: ' + high_score + '\r\n')
