@@ -1,8 +1,10 @@
 import requests
 import io
-from bs4 import BeautifulSoup
 import sys
+from bs4 import BeautifulSoup
 import re
+import geocoder
+import json
 
 
 INSPECTION_DOMAIN = 'http://info.kingcounty.gov'
@@ -102,7 +104,9 @@ def is_inspection_row(element):
 def extract_score_data(listing):
     inspection_rows = listing.find_all(is_inspection_row)
     if len(inspection_rows) == 0:
-        return 'No Data'
+        score_dict = {u'Average Score': 'No Data',
+                      u'High Score': 'No Data', u'Inspections': 'No Data'}
+        return score_dict
     total_score = 0
     inspections = 0
     highest_score = 0
@@ -113,21 +117,72 @@ def extract_score_data(listing):
         if inspection_score > highest_score:
             highest_score = inspection_score
     average_score = total_score/inspections
-    score_dict = {u'Average': average_score,
-                  u'High': highest_score, u'Inspections': inspections}
+    score_dict = {u'Average Score': average_score,
+                  u'High Score': highest_score, u'Inspections': inspections}
     return score_dict
 
 
-if __name__ == '__main__':
-    if sys.argv[1] == 'test':
+def generate_results(test=False, count=100):
+    kwargs = {}
+    if test:
         html = load_inspection_page('inspection_page.html')
     else:
-        html = get_inspection_page(sys.argv[1])
+        html = get_inspection_page(**kwargs)
     html_parsed = parse_source(html)
     listings = extract_data_listings(html_parsed)
     data_dict = {}
-    for listing in listings:
+    for listing in listings[:count]:
         metadata = extract_restaurant_metadata(listing)
         score_data = extract_score_data(listing)
-        data_dict[metadata['Business Name']] = [metadata, score_data]
-    print(data_dict['VEGGIE GRILL'])
+        data_dict[metadata['Business Name']] = {**metadata, **score_data}
+    return data_dict
+
+
+def get_geojson(result, data):
+    addr1 = data[result]['Address']
+    addr2 = 'SEATTLE WA'
+    address = '{0} {1}'.format(addr1, addr2)
+    if not address:
+        return None
+    geocoded = geocoder.google(address)
+    geojson = geocoded.geojson
+    inspection_data = {}
+    keys = [u'Business Name', u'Average Score',
+            u'High Score', u'Inspections', u'Address']
+    for key in keys:
+        if key == 'Address':
+            try:
+                inspection_data[key] = geojson['properties']['address']
+            except:
+                continue
+        else:
+            inspection_data[key] = data[result][key]
+    geojson['properties'] = inspection_data
+    return geojson
+
+
+if __name__ == '__main__':
+    import pprint
+    test = len(sys.argv) > 1 and sys.argv[1] == 'test'
+    total_result = {'type': 'FeatureCollection', 'features': []}
+    data = generate_results(test)
+    high_score = 0
+    for result in data:
+        geo_result = get_geojson(result, data)
+        # pprint.pprint(geo_result)
+        total_result['features'].append(geo_result)
+        try:
+            temp_high = int(geo_result['properties']['High Score'])
+            if temp_high > high_score:
+                high_score = temp_high
+                high_score_restaurant = geo_result
+        except:
+            continue
+    with open('my_map.json', 'w') as fh:
+        json.dump(total_result, fh)
+    high_score = str(high_score_restaurant['properties']['High Score'])
+    high_score_business = high_score_restaurant['properties']['Business Name']
+    print('\r\nThe restaurant with the highest score '
+          'is: ' + high_score_business + '\r\n')
+    print('Eww\r\n')
+    print('They have a high score of: ' + high_score + '\r\n')
